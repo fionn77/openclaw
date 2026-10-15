@@ -335,12 +335,13 @@ function handleMenuSelection(
   item: MenuItem,
   event: CustomEvent<MenuItem>,
   surface: HTMLElement,
+  pickerAnchor: HTMLElement | undefined,
   props: ChatComposerPlusMenuContentProps,
 ) {
   const value = item.id;
   if (
     uploadsEnabled(props.attachments.uploadConfig) &&
-    handleChatAttachmentMenuSelection(surface, value)
+    handleChatAttachmentMenuSelection(surface, value, pickerAnchor)
   ) {
     return;
   }
@@ -528,7 +529,13 @@ function PlusMenuSurface(props: { menu: ChatComposerPlusMenuContentProps }) {
           }}
           onSelect={(item, event) => {
             if (handle) {
-              handleMenuSelection(item, event, handle.overlay.surface, props.menu);
+              handleMenuSelection(
+                item,
+                event,
+                handle.overlay.surface,
+                handle.overlay.trigger,
+                props.menu,
+              );
             }
           }}
           onNavigate={({ value }) =>
