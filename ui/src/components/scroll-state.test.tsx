@@ -1,10 +1,12 @@
 /* @vitest-environment jsdom */
-import { html, nothing, render } from "lit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { scrollState } from "./scroll-state.ts";
+import { mountSolid } from "../test-helpers/mount-solid.ts";
+import { flush } from "../test-helpers/solid-settle.ts";
 import { SessionDataScrollController } from "./session-data-scroll-controller.ts";
+import { useScrollState } from "./solid/scroll-state.ts";
 
 let container: HTMLDivElement;
+let mounted: ReturnType<typeof mountSolid> | undefined;
 let resized: ResizeObserverCallback;
 const observe = vi.fn();
 const unobserve = vi.fn();
@@ -26,12 +28,18 @@ beforeEach(() => {
   document.body.append(container);
 });
 afterEach(() => {
-  render(nothing, container);
+  mounted?.unmount();
+  mounted = undefined;
   container.remove();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
+
+function Scroller(props: { class?: string }) {
+  const scrollState = useScrollState();
+  return <div class={props.class} ref={scrollState} />;
+}
 
 function geometry(element: HTMLElement, reads: string[], name: string) {
   Object.defineProperties(element, {
@@ -47,11 +55,15 @@ function geometry(element: HTMLElement, reads: string[], name: string) {
 }
 
 describe("scroll state observation", () => {
-  it("batches every scroller read before publishing after a Lit update", async () => {
-    render(
-      html`<div ${scrollState()}></div>
-        <div ${scrollState()}></div>`,
-      container,
+  it("batches every scroller read before publishing after a Solid update", () => {
+    mounted = mountSolid(
+      () => (
+        <>
+          <Scroller />
+          <Scroller />
+        </>
+      ),
+      { container },
     );
     const elements = [...container.children] as HTMLElement[];
     const order: string[] = [];
@@ -66,7 +78,7 @@ describe("scroll state observation", () => {
         }),
       });
     });
-    await Promise.resolve();
+    flush();
     expect(order).toEqual([]);
     vi.advanceTimersToNextFrame();
     expect(order).toEqual(["read-0", "read-1", ...Array<string>(6).fill("write")]);
@@ -88,10 +100,11 @@ describe("scroll state observation", () => {
     expect(order).toEqual(["read-0"]);
   });
 
-  it("updates scroll boundaries after resize and stops observing disconnected directives", () => {
-    render(html`<div ${scrollState()}></div>`, container);
+  it("updates scroll boundaries after resize and stops observing unmounted scrollers", () => {
+    mounted = mountSolid(() => <Scroller />, { container });
     const element = container.firstElementChild as HTMLElement;
     geometry(element, [], "read");
+    flush();
     vi.advanceTimersToNextFrame();
     element.scrollTop = 100;
     resized(
@@ -109,15 +122,16 @@ describe("scroll state observation", () => {
     expect(element.dataset.atEnd).toBe("false");
     vi.advanceTimersToNextFrame();
     expect(element.dataset.atEnd).toBe("true");
-    render(nothing, container);
+    mounted.unmount();
     expect(unobserve).toHaveBeenCalledWith(element);
   });
 
   it("shares a frame with the sidebar and never reads from its update entry point", () => {
-    render(html`<div class="sidebar-shell__body" ${scrollState()}></div>`, container);
+    mounted = mountSolid(() => <Scroller class="sidebar-shell__body" />, { container });
     const element = container.firstElementChild as HTMLElement;
     const reads: string[] = [];
     geometry(element, reads, "read");
+    flush();
     const notify = vi.fn();
     const sidebar = new SessionDataScrollController(notify);
     try {

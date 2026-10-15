@@ -1,4 +1,3 @@
-import type { SolidController, SolidControllerHost } from "../lit/solid-controller-host.ts";
 import { consumeTooltipEscape } from "./tooltip.ts";
 import { trackDropdownKeyboardDismissal } from "./web-awesome.ts";
 
@@ -8,7 +7,7 @@ type DropdownMenuOptions = {
   onKeydown?: (event: KeyboardEvent) => void;
 };
 
-/** The menu lifetime owns keyboard dismissal and initial focus in both renderers. */
+/** The menu lifetime owns keyboard dismissal and initial focus for Web Awesome menus. */
 export function connectDropdownMenu(
   host: HTMLElement,
   options: DropdownMenuOptions,
@@ -58,21 +57,4 @@ export function connectDropdownMenu(
   return () => {
     host.ownerDocument.removeEventListener("keydown", handleDocumentKeydown, true);
   };
-}
-
-export class DropdownMenuController implements SolidController {
-  private disconnect?: () => void;
-  constructor(
-    private readonly host: SolidControllerHost & HTMLElement,
-    private readonly options: DropdownMenuOptions,
-  ) {
-    host.addController(this);
-  }
-  hostConnected() {
-    this.disconnect = connectDropdownMenu(this.host, this.options, () => this.host.updateComplete);
-  }
-  hostDisconnected() {
-    this.disconnect?.();
-    this.disconnect = undefined;
-  }
 }
