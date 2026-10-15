@@ -40,8 +40,8 @@ Once set, any `exec` call with `host=node` runs on the node host (subject to the
 
 Quote arguments containing literal shell separators, such as OAuth callback URLs:
 `/usr/bin/printf '%s\n' 'http://127.0.0.1:9876/oauth2/callback?state=example&code=example'`.
-Single quotes, double quotes, and an escaped `\&` preserve a literal ampersand
-through approval preparation. Active operators, substitutions, and line continuations
+Single or double quotes preserve literal separators through approval preparation.
+For an unquoted URL, escape both `\?` and `\&`. Active operators, expansions, and line continuations
 remain unsupported in approval-bound shell commands; quoting a URL does not bypass
 the node's execution policy.
 

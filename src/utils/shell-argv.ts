@@ -141,7 +141,7 @@ function splitQuotedArgs(
       }
       break;
     }
-    if (rejectShellSyntax && /[;&|<>$`\r\n]/u.test(ch)) {
+    if (rejectShellSyntax && /[;&|<>$`\r\n*?[\](){}~]/u.test(ch)) {
       return null;
     }
     if (/\s/.test(ch)) {

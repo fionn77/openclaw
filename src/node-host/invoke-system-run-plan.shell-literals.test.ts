@@ -23,7 +23,7 @@ describe("literal shell arguments in node approval plans", () => {
       for (const argument of [
         `'${callback}'`,
         `"${callback}"`,
-        callback.replace("&", "\\&"),
+        callback.replace("?", "\\?").replace("&", "\\&"),
         "'literal;pipe|redirect<>$value`text`'",
         '"literal;pipe|redirect<>"',
       ]) {
@@ -90,16 +90,26 @@ describe("literal shell arguments in node approval plans", () => {
 
   it
     .skipIf(process.platform === "win32")
-    .each(["py\\\nthon ./mutable.py 'x&y'", "\"py\\\nthon\" ./mutable.py 'x&y'"])(
-    "rejects continuation-obscured interpreter commands: %j",
-    (command) => {
-      expect(
-        buildSystemRunApprovalPlan({
-          command: ["/bin/sh", "-lc", command],
-          rawCommand: command,
-          cwd: process.cwd(),
-        }),
-      ).toEqual(DENIED_RUNTIME_APPROVAL);
-    },
-  );
+    .each([
+      "py\\\nthon ./mutable.py 'x&y'",
+      "\"py\\\nthon\" ./mutable.py 'x&y'",
+      "pyth?n ./mutable.py 'x&y'",
+      "env pyth*n ./mutable.py 'x&y'",
+      "(python ./mutable.py 'x&y')",
+      "X=x python ./mutable.py 'x&y'",
+      "! python ./mutable.py 'x&y'",
+      "coproc python ./mutable.py 'x&y'",
+      "command python ./mutable.py 'x&y'",
+      "exec python ./mutable.py 'x&y'",
+      "builtin eval \"python ./mutable.py 'x&y'\"",
+      "busybox sh -c 'python ./mutable.py \"x&y\"'",
+    ])("rejects shell syntax and carriers that obscure mutable interpreters: %j", (command) => {
+    expect(
+      buildSystemRunApprovalPlan({
+        command: ["/bin/sh", "-lc", command],
+        rawCommand: command,
+        cwd: process.cwd(),
+      }),
+    ).toEqual(DENIED_RUNTIME_APPROVAL);
+  });
 });

@@ -6,6 +6,7 @@ import {
 } from "@openclaw/normalization-core/string-coerce";
 import { splitShellArgs } from "../utils/shell-argv.js";
 import { detectInlineEvalInSegments } from "./command-analysis/risks.js";
+import { isEnvAssignmentToken } from "./command-carriers.js";
 import { isInterpreterLikeSafeBin } from "./exec-safe-bin-runtime-policy.js";
 import {
   POSIX_PARSEABLE_SHELL_WRAPPERS,
@@ -14,6 +15,7 @@ import {
   unwrapKnownDispatchWrapperInvocation,
   unwrapKnownShellMultiplexerInvocation,
 } from "./exec-wrapper-resolution.js";
+import { resolveExecWrapperTrustPlan } from "./exec-wrapper-trust-plan.js";
 import { parseInlineOptionToken } from "./inline-option-token.js";
 import {
   normalizePackageManagerExecToken,
@@ -416,14 +418,21 @@ function resolveMutableFileOperandIndex(argv: string[], cwd: string | undefined)
 
 function shellPayloadNeedsStableBinding(shellCommand: string, cwd: string | undefined): boolean {
   // Classify literal argv without treating quoted URL separators as shell syntax.
-  const argv = splitShellArgs(shellCommand, { rejectShellSyntax: true });
-  if (!argv) {
+  const words = splitShellArgs(shellCommand, { rejectShellSyntax: true });
+  if (!words) {
     return true;
   }
-  if (argv.length === 0) {
+  if (words.length === 0) {
     return false;
   }
+  const plan = resolveExecWrapperTrustPlan(words);
+  const argv = plan.argv;
+  const firstToken = readTrimmedArgToken(argv, 0);
   if (
+    plan.policyBlocked ||
+    plan.shellWrapperExecutable ||
+    isEnvAssignmentToken(firstToken) ||
+    [".", "source", "eval", "!", "coproc"].includes(firstToken) ||
     resolveMutableFileOperandIndex(argv, cwd) !== null ||
     requiresStableInterpreterApprovalBindingWithShellCommand({
       argv,
@@ -431,10 +440,6 @@ function shellPayloadNeedsStableBinding(shellCommand: string, cwd: string | unde
       shellCommand: null,
     })
   ) {
-    return true;
-  }
-  const firstToken = readTrimmedArgToken(argv, 0);
-  if (firstToken === "." || firstToken === "source") {
     return true;
   }
   if (!resolvesToExistingFileSync(firstToken, cwd)) {
