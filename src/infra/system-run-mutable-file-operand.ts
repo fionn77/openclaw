@@ -23,6 +23,7 @@ import {
   PNPM_DLX_OPTIONS_WITH_VALUE,
   PNPM_FLAG_OPTIONS,
   PNPM_OPTIONS_WITH_VALUE,
+  resolveKnownPackageManagerExecInvocation,
   unwrapKnownPackageManagerExecInvocation,
 } from "./package-manager-exec-wrapper.js";
 import {
@@ -417,22 +418,37 @@ function resolveMutableFileOperandIndex(argv: string[], cwd: string | undefined)
 }
 
 function shellPayloadNeedsStableBinding(shellCommand: string, cwd: string | undefined): boolean {
-  // Classify literal argv without treating quoted URL separators as shell syntax.
-  const words = splitShellArgs(shellCommand, { rejectShellSyntax: true });
-  if (!words) {
-    return true;
+  // Only reconsider payloads the raw separator check previously rejected.
+  const needsLiteralCheck = /[;&|<>]/u.test(shellCommand);
+  const globIndexes: number[] = [];
+  let argv = splitShellArgs(shellCommand, {
+    rejectShellSyntax: needsLiteralCheck,
+    onUnquotedGlob: (index) => globIndexes.push(index),
+  });
+  if (!argv) {
+    return needsLiteralCheck;
   }
-  if (words.length === 0) {
+  if (argv.length === 0) {
     return false;
   }
-  const plan = resolveExecWrapperTrustPlan(words);
-  const argv = plan.argv;
-  const firstToken = readTrimmedArgToken(argv, 0);
+  if (needsLiteralCheck) {
+    const plan = resolveExecWrapperTrustPlan(argv);
+    const executableIndex = argv.length - plan.argv.length;
+    const firstToken = readTrimmedArgToken(plan.argv, 0);
+    if (
+      plan.policyBlocked ||
+      plan.shellWrapperExecutable ||
+      PACKAGE_MANAGER_EXECUTABLES.has(normalizePackageManagerExecToken(firstToken)) ||
+      resolveKnownPackageManagerExecInvocation(plan.argv).kind !== "not-package-manager" ||
+      globIndexes.some((index) => index <= executableIndex) ||
+      isEnvAssignmentToken(firstToken) ||
+      ["eval", "!", "coproc"].includes(firstToken)
+    ) {
+      return true;
+    }
+    argv = plan.argv;
+  }
   if (
-    plan.policyBlocked ||
-    plan.shellWrapperExecutable ||
-    isEnvAssignmentToken(firstToken) ||
-    [".", "source", "eval", "!", "coproc"].includes(firstToken) ||
     resolveMutableFileOperandIndex(argv, cwd) !== null ||
     requiresStableInterpreterApprovalBindingWithShellCommand({
       argv,
@@ -440,6 +456,10 @@ function shellPayloadNeedsStableBinding(shellCommand: string, cwd: string | unde
       shellCommand: null,
     })
   ) {
+    return true;
+  }
+  const firstToken = readTrimmedArgToken(argv, 0);
+  if (firstToken === "." || firstToken === "source") {
     return true;
   }
   if (!resolvesToExistingFileSync(firstToken, cwd)) {

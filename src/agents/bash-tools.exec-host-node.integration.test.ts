@@ -523,60 +523,69 @@ for (const { policyState, shouldExecute } of [
   });
 }
 
-it.each(["printf node-policy-proof", "/usr/bin/env /usr/bin/printf node-policy-proof"])(
-  "keeps remote unpinned or wrapped %s on the human path",
-  async (command) => {
-    saveExecApprovals({ version: 1, defaults: { security: "allowlist", ask: "on-miss" } });
-    const autoReviewer = vi.fn(async () => ({
-      decision: "allow-once" as const,
-      risk: "low" as const,
-      rationale: "would allow if called",
-    }));
-    const warnings: string[] = [];
-    const execution = executeNodeHostCommand({
-      ...request,
-      command,
-      security: "allowlist",
-      ask: "on-miss",
-      autoReview: true,
-      autoReviewer,
-      warnings,
-    });
-    const drained = execution.catch(() => undefined);
-    try {
-      await Promise.race([decisionEntered.promise, execution]);
-      expect(autoReviewer).not.toHaveBeenCalled();
-      expect(invokeCount).toBe(0);
-      expect(warnings).toContain("Exec auto-review skipped: dispatch chain cannot be bound");
-      resolveDecision({ decision: "deny" });
-      await expect(execution).rejects.toThrow("exec denied: user-denied");
-    } finally {
-      resolveDecision({ decision: "deny" });
-      await drained;
-    }
-  },
-);
-
-it.each(["/usr/bin/printf *.txt", "/bin/sh -c '/usr/bin/printf node-policy-proof'"])(
-  "rejects nonliteral or nested shell payload %s before requesting approval",
-  async (command) => {
-    saveExecApprovals({ version: 1, defaults: { security: "allowlist", ask: "on-miss" } });
-    const autoReviewer = vi.fn<ExecAutoReviewer>();
-    await expect(
-      executeNodeHostCommand({
-        ...request,
-        command,
-        security: "allowlist",
-        ask: "on-miss",
-        autoReview: true,
-        autoReviewer,
-      }),
-    ).rejects.toThrow("approval cannot safely bind");
+it.each([
+  "printf node-policy-proof",
+  "/usr/bin/printf *.txt",
+  "/usr/bin/env /usr/bin/printf node-policy-proof",
+  "/bin/sh -c '/usr/bin/printf node-policy-proof'",
+])("keeps remote unpinned or wrapped %s on the human path", async (command) => {
+  saveExecApprovals({ version: 1, defaults: { security: "allowlist", ask: "on-miss" } });
+  const autoReviewer = vi.fn(async () => ({
+    decision: "allow-once" as const,
+    risk: "low" as const,
+    rationale: "would allow if called",
+  }));
+  const warnings: string[] = [];
+  const execution = executeNodeHostCommand({
+    ...request,
+    command,
+    security: "allowlist",
+    ask: "on-miss",
+    autoReview: true,
+    autoReviewer,
+    warnings,
+  });
+  const drained = execution.catch(() => undefined);
+  try {
+    await Promise.race([decisionEntered.promise, execution]);
     expect(autoReviewer).not.toHaveBeenCalled();
-    expect(rpc.mock.calls.some(([method]) => method === "exec.approval.request")).toBe(false);
     expect(invokeCount).toBe(0);
-  },
-);
+    expect(warnings).toContain("Exec auto-review skipped: dispatch chain cannot be bound");
+    resolveDecision({ decision: "deny" });
+    await expect(execution).rejects.toThrow("exec denied: user-denied");
+  } finally {
+    resolveDecision({ decision: "deny" });
+    await drained;
+  }
+});
+
+it.each([
+  "'http://127.0.0.1:9876/oauth2/callback?state=x&code=y'",
+  String.raw`http://127.0.0.1:9876/oauth2/callback?state=x\&code=y`,
+])("requests human approval with unchanged argv for callback %s", async (callback) => {
+  saveExecApprovals({ version: 1, defaults: { security: "allowlist", ask: "on-miss" } });
+  const command = `/usr/bin/printf %s ${callback}`;
+  const execution = executeNodeHostCommand({
+    ...request,
+    command,
+    security: "allowlist",
+    ask: "on-miss",
+  });
+  const drained = execution.catch(() => undefined);
+  try {
+    await Promise.race([decisionEntered.promise, execution]);
+    const approval = rpc.mock.calls.find(([method]) => method === "exec.approval.request");
+    expect(approval?.[2]).toMatchObject({
+      systemRunPlan: { argv: buildNodeShellCommand(command, "darwin") },
+    });
+    expect(invokeCount).toBe(0);
+    resolveDecision({ decision: "deny" });
+    await expect(execution).rejects.toThrow("exec denied: user-denied");
+  } finally {
+    resolveDecision({ decision: "deny" });
+    await drained;
+  }
+});
 
 it("collects live conversation context only when the node exec tool reaches review", async () => {
   let currentTranscript: ExecAutoReviewTranscript | undefined;

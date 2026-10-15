@@ -52,12 +52,14 @@ export function hasTopLevelShellControlOperator(raw: string): boolean {
   return false;
 }
 
-/** Splits shell-like argv; optionally rejects control operators, redirections and expansions. */
-export function splitShellArgs(
-  raw: string,
-  options?: { rejectShellSyntax?: boolean },
-): string[] | null {
-  return splitQuotedArgs(raw, "shell", false, options?.rejectShellSyntax);
+type ShellSyntaxOptions = {
+  rejectShellSyntax?: boolean;
+  onUnquotedGlob?: (argvIndex: number) => void;
+};
+
+/** Splits shell-like argv; strict callers can inspect globs instead of rejecting them. */
+export function splitShellArgs(raw: string, options?: ShellSyntaxOptions): string[] | null {
+  return splitQuotedArgs(raw, "shell", false, options);
 }
 
 /** Groups quoted process arguments, preserving literal backslashes and hash characters. */
@@ -77,8 +79,9 @@ function splitQuotedArgs(
   raw: string,
   syntax: "shell" | "command",
   allowUnclosedQuotes = false,
-  rejectShellSyntax = false,
+  options?: ShellSyntaxOptions,
 ): string[] | null {
+  const rejectShellSyntax = options?.rejectShellSyntax;
   const backslashEscapes = syntax === "shell";
   const tokens: string[] = [];
   let buf = "";
@@ -87,7 +90,7 @@ function splitQuotedArgs(
   let wordStarted = false;
 
   const pushToken = () => {
-    if (buf.length > 0) {
+    if (buf.length > 0 || (rejectShellSyntax && wordStarted)) {
       tokens.push(buf);
       buf = "";
     }
@@ -135,13 +138,19 @@ function splitQuotedArgs(
     }
     // In POSIX shells, "#" starts a comment only when it begins a word; keep
     // inline hashes inside tokens so URLs/fragments are not truncated.
-    if (syntax === "shell" && ch === "#" && !wordStarted) {
-      if (rejectShellSyntax && /[\r\n]/u.test(raw.slice(i + 1))) {
+    if (syntax === "shell" && ch === "#" && (rejectShellSyntax ? !wordStarted : buf.length === 0)) {
+      if (rejectShellSyntax) {
         return null;
       }
       break;
     }
-    if (rejectShellSyntax && /[;&|<>$`\r\n*?[\](){}~]/u.test(ch)) {
+    if (rejectShellSyntax && /[*?[]/u.test(ch)) {
+      if (!options?.onUnquotedGlob) {
+        return null;
+      }
+      options.onUnquotedGlob(tokens.length);
+    }
+    if (rejectShellSyntax && /[;&|<>$`\r\n(){}~]/u.test(ch)) {
       return null;
     }
     if (/\s/.test(ch)) {

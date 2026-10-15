@@ -41,10 +41,8 @@ Once set, any `exec` call with `host=node` runs on the node host (subject to the
 Quote arguments containing literal shell separators, such as OAuth callback URLs:
 `/usr/bin/printf '%s\n' 'http://127.0.0.1:9876/oauth2/callback?state=example&code=example'`.
 Single or double quotes preserve literal separators through approval preparation.
-For an unquoted URL, escape both `\?` and `\&`. Approval-bound commands reject
-active operators, expansions (including globs), line continuations, and nested
-shells before prompting. Use a single executable with literal arguments; quoting
-a URL does not bypass the node's execution policy.
+An escaped `\&` also passes preparation; quote the full URL to prevent shell
+wildcard expansion. The normal node execution policy and human approval still apply.
 
 Child commands retain the node's profile and state paths, but do not inherit its
 daemon identity or native service selectors. This lets `openclaw gateway status`
