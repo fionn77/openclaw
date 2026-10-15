@@ -415,11 +415,13 @@ function resolveMutableFileOperandIndex(argv: string[], cwd: string | undefined)
 }
 
 function shellPayloadNeedsStableBinding(shellCommand: string, cwd: string | undefined): boolean {
-  if (/[;&|<>]/u.test(shellCommand)) {
+  // Literal URL separators must not be mistaken for shell control operators.
+  // Reject dynamic syntax before treating the remaining words as direct argv.
+  const argv = splitShellArgs(shellCommand, { rejectShellSyntax: true });
+  if (!argv) {
     return true;
   }
-  const argv = splitShellArgs(shellCommand);
-  if (!argv || argv.length === 0) {
+  if (argv.length === 0) {
     return false;
   }
   if (
