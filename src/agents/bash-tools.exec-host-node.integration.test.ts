@@ -523,41 +523,60 @@ for (const { policyState, shouldExecute } of [
   });
 }
 
-it.each([
-  "printf node-policy-proof",
-  "/usr/bin/printf *.txt",
-  "/usr/bin/env /usr/bin/printf node-policy-proof",
-  "/bin/sh -c '/usr/bin/printf node-policy-proof'",
-])("keeps remote unpinned or wrapped %s on the human path", async (command) => {
-  saveExecApprovals({ version: 1, defaults: { security: "allowlist", ask: "on-miss" } });
-  const autoReviewer = vi.fn(async () => ({
-    decision: "allow-once" as const,
-    risk: "low" as const,
-    rationale: "would allow if called",
-  }));
-  const warnings: string[] = [];
-  const execution = executeNodeHostCommand({
-    ...request,
-    command,
-    security: "allowlist",
-    ask: "on-miss",
-    autoReview: true,
-    autoReviewer,
-    warnings,
-  });
-  const drained = execution.catch(() => undefined);
-  try {
-    await Promise.race([decisionEntered.promise, execution]);
+it.each(["printf node-policy-proof", "/usr/bin/env /usr/bin/printf node-policy-proof"])(
+  "keeps remote unpinned or wrapped %s on the human path",
+  async (command) => {
+    saveExecApprovals({ version: 1, defaults: { security: "allowlist", ask: "on-miss" } });
+    const autoReviewer = vi.fn(async () => ({
+      decision: "allow-once" as const,
+      risk: "low" as const,
+      rationale: "would allow if called",
+    }));
+    const warnings: string[] = [];
+    const execution = executeNodeHostCommand({
+      ...request,
+      command,
+      security: "allowlist",
+      ask: "on-miss",
+      autoReview: true,
+      autoReviewer,
+      warnings,
+    });
+    const drained = execution.catch(() => undefined);
+    try {
+      await Promise.race([decisionEntered.promise, execution]);
+      expect(autoReviewer).not.toHaveBeenCalled();
+      expect(invokeCount).toBe(0);
+      expect(warnings).toContain("Exec auto-review skipped: dispatch chain cannot be bound");
+      resolveDecision({ decision: "deny" });
+      await expect(execution).rejects.toThrow("exec denied: user-denied");
+    } finally {
+      resolveDecision({ decision: "deny" });
+      await drained;
+    }
+  },
+);
+
+it.each(["/usr/bin/printf *.txt", "/bin/sh -c '/usr/bin/printf node-policy-proof'"])(
+  "rejects nonliteral or nested shell payload %s before requesting approval",
+  async (command) => {
+    saveExecApprovals({ version: 1, defaults: { security: "allowlist", ask: "on-miss" } });
+    const autoReviewer = vi.fn<ExecAutoReviewer>();
+    await expect(
+      executeNodeHostCommand({
+        ...request,
+        command,
+        security: "allowlist",
+        ask: "on-miss",
+        autoReview: true,
+        autoReviewer,
+      }),
+    ).rejects.toThrow("approval cannot safely bind");
     expect(autoReviewer).not.toHaveBeenCalled();
+    expect(rpc.mock.calls.some(([method]) => method === "exec.approval.request")).toBe(false);
     expect(invokeCount).toBe(0);
-    expect(warnings).toContain("Exec auto-review skipped: dispatch chain cannot be bound");
-    resolveDecision({ decision: "deny" });
-    await expect(execution).rejects.toThrow("exec denied: user-denied");
-  } finally {
-    resolveDecision({ decision: "deny" });
-    await drained;
-  }
-});
+  },
+);
 
 it("collects live conversation context only when the node exec tool reaches review", async () => {
   let currentTranscript: ExecAutoReviewTranscript | undefined;
