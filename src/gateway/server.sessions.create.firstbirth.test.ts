@@ -86,7 +86,9 @@ test.for(["new database", "interrupted empty database"])(
     const opening =
       scenario === "new database"
         ? nativeWorker.prepare()
-        : nativeWorker.execute({ type: "inspect", input: "wal_autocheckpoint" }, () => {});
+        : nativeWorker
+            .execute({ type: "inspect", input: "wal_autocheckpoint" }, () => {})
+            .then(() => {});
     const discovery = createDeferred<{
       candidates: Parameters<typeof sessionReaders.withSessionHistoryWorkerReadCandidates>[0];
       dispatched: number;
