@@ -53,7 +53,7 @@ export type MenuBinding = {
     label?: string,
   ): Record<string, unknown>;
   trigger(parentBinding?: MenuBinding, disabled?: boolean): Record<string, unknown>;
-  content(): Record<string, unknown>;
+  content(): Record<string, unknown> & { onKeyDown(event: KeyboardEvent): void };
   keydown(event: KeyboardEvent): void;
 };
 
@@ -151,9 +151,23 @@ export function useMenuMachine(
         trackPositioning() {},
         trackInteractOutside() {},
         scrollToHighlightedItem() {},
-        // A fixed 100 ms close defeats slow diagonal travel inside the safe polygon.
-        // Pointer movement and MENU_POINTERENTER already settle this live branch.
-        waitForCloseDelay() {},
+        waitForCloseDelay(params) {
+          const wait = () =>
+            // SAFETY: the pinned menu effect returns its timer cleanup; Zag's shared type also permits watch effects.
+            machine.implementations!.effects!.waitForCloseDelay!(params) as VoidFunction;
+          let cancel = wait();
+          const keepMoving = () => {
+            cancel();
+            cancel = wait();
+          };
+          const doc = params.scope.getDoc();
+          // Keep slow diagonal travel alive, then let Zag settle a stopped pointer.
+          doc.addEventListener("pointermove", keepMoving);
+          return () => {
+            doc.removeEventListener("pointermove", keepMoving);
+            cancel();
+          };
+        },
       },
       actions: {
         ...machine.implementations?.actions,
@@ -208,6 +222,8 @@ export function useMenuMachine(
         focusTrigger() {},
         focusMenu() {},
         focusParentMenu() {},
+        // The overlay owns sibling admission without moving focus during pointer travel.
+        closeSiblingMenus() {},
         setIntentPolygon(params) {
           const trigger = overlay.trigger;
           if (!trigger) {
@@ -238,11 +254,11 @@ export function useMenuMachine(
     "aria-label": overlay.id,
     onOpenChange({ open }) {
       const restore = !open && containsComposed(overlay.surface, service.scope.getActiveElement());
-      // Native sibling dismissal must not leave focus behind in the retired branch.
+      // A retired sibling can still own focus through its return trigger.
       const handoff =
         open &&
         [...(overlay.parent?.children ?? [])].some(
-          (sibling) => sibling !== overlay && sibling.open && sibling.containsFocus(),
+          (sibling) => sibling !== overlay && sibling.containsFocus(),
         );
       if (
         !overlay.request(
@@ -253,7 +269,6 @@ export function useMenuMachine(
         service.send({ type: overlay.open ? "CONTROLLED.OPEN" : "CONTROLLED.CLOSE" });
       }
     },
-    onSelect: ({ value }) => onSelect(value),
     // Zag's default link click is not cancelable; native click keeps selection vetoable.
     navigate: ({ node }) => queueMicrotask(() => node.click()),
   };
@@ -422,12 +437,12 @@ export function useMenuMachine(
       return {
         ...result,
         onClick: (event: MouseEvent) => {
+          if (disabled || !overlay.open) {
+            event.preventDefault();
+            return;
+          }
           const anchor = event.currentTarget;
           if (anchor instanceof HTMLAnchorElement) {
-            if (disabled) {
-              event.preventDefault();
-              return;
-            }
             if (
               !shouldHandleNavigationClick(event) ||
               (anchor.target !== "" && anchor.target !== "_self") ||
@@ -435,10 +450,11 @@ export function useMenuMachine(
             ) {
               return;
             }
-            // Selection is queued; prevent navigation now so its cancelable event can veto it.
+            // The cancelable selection event decides whether native navigation proceeds.
             event.preventDefault();
           }
-          result.onClick?.(event);
+          // Deliver the action before a queued render can retire its menu owner.
+          onSelect(value);
         },
         onContextMenu: (event: MouseEvent) => {
           if (event.currentTarget instanceof HTMLAnchorElement) {
@@ -520,12 +536,8 @@ export function useMenuMachine(
           }
           const item = parentBinding.read().getItemProps({ value: trigger.id });
           item.onPointerMove?.(event);
-          // The document pointer listener releases the old child's corridor lock.
-          // Decide child opening after that same event, rather than dropping it.
+          // Parent highlighting stays corridor-protected; the child owns its hover delay.
           queueMicrotask(() => {
-            if (parent?.refs.get("pointerRoutingLocked")) {
-              return;
-            }
             service.send({ type: "TRIGGER_POINTERMOVE", target, point });
           });
         },
@@ -548,7 +560,12 @@ export function useMenuMachine(
         },
         onKeyDown: (e: KeyboardEvent) => {
           const target = e.target;
-          if (!(target instanceof HTMLElement) || !ownsTarget(target)) {
+          if (
+            e.defaultPrevented ||
+            e.isComposing ||
+            !(target instanceof HTMLElement) ||
+            !ownsTarget(target)
+          ) {
             return;
           }
           if (options.surface === "listbox") {
@@ -560,6 +577,31 @@ export function useMenuMachine(
             if (![...overlay.children].some((child) => child.open)) {
               overlay.keydown(e);
             }
+            return;
+          }
+          if (
+            target.matches("input[data-search]") &&
+            (e.key === "ArrowDown" || e.key === "Enter")
+          ) {
+            const first = [
+              ...overlay.surface.querySelectorAll<HTMLElement>('[role^="menuitem"]'),
+            ].find(
+              (item) =>
+                item.closest('[role="menu"]') === overlay.surface &&
+                !item.matches(":disabled") &&
+                item.getAttribute("aria-disabled") !== "true" &&
+                Boolean(target.compareDocumentPosition(item) & Node.DOCUMENT_POSITION_FOLLOWING),
+            );
+            e.preventDefault();
+            first?.focus({ preventScroll: true });
+            return;
+          }
+          if (
+            target instanceof HTMLButtonElement &&
+            target.matches(MENU_FORM_CONTROL_SELECTOR) &&
+            (e.key === "ArrowDown" || e.key === "ArrowUp")
+          ) {
+            keydown(e);
             return;
           }
           if (e.key === "Tab" || target.matches(MENU_FORM_CONTROL_SELECTOR)) {
