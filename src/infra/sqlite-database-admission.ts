@@ -512,7 +512,7 @@ export function readSqliteDatabaseSiblingWriteRevision(
     : (revision - (state.localWriteRevisions.get(database) ?? 0)) | 0;
 }
 
-/** A stopped worker may have committed before delivering its row-cache receipt. */
+/** Worker exit releases handle custody; native write settlement owns data revisions. */
 export function trackSqliteDatabaseAdmissionWorker(worker: {
   readonly threadId: number;
   once(event: "exit", listener: (code: number | undefined) => void): unknown;

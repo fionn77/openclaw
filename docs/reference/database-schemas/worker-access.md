@@ -187,10 +187,12 @@ cascade, while windows transferred to a surviving session retain their scopes.
 Shared retirement flags remove those scopes and exited workers' reference cells
 from later admission snapshots; stale transfers cannot restore them. Recreated
 scope keys receive a fresh receipt identity, so old cached reads remain invalid.
-Worker exit invalidates row receipts only for databases that worker still had
-open; retiring an unrelated idle worker preserves session and auth caches.
-Native close settles receipts before releasing its reference, so a later worker
-failure does not invalidate those committed facts again.
+Worker exit releases handle references without advancing data revisions, so
+session and auth caches held by live siblings survive idle-worker retirement.
+Native writes settle their receipts before returning or closing; interrupted
+mutations remain subject to their operation owner's unknown-outcome recovery.
+Quarantine and schema changes still invalidate their admission facts and scoped
+receipts. Final-handle closure still retires facts for physical-file readmission.
 Canonical validation compares admitted catalog facts with the pending-table DDL
 from the schema source; fresh workers do not bootstrap a comparison database.
 Receipt metadata follows retained session scopes rather than all deleted sessions;
