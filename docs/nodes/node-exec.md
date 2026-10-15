@@ -45,6 +45,11 @@ For an unquoted URL, escape both `\?` and `\&`. Active operators, expansions, an
 remain unsupported in approval-bound shell commands; quoting a URL does not bypass
 the node's execution policy.
 
+Child commands retain the node's profile and state paths, but do not inherit its
+daemon identity or native service selectors. This lets `openclaw gateway status`
+and `openclaw update` inspect the Gateway independently of the node service.
+Explicit service selectors in permitted environment overrides still apply.
+
 `host=auto` will not implicitly choose the node on its own. An explicit per-call `host=node` request is allowed from `auto` only when no sandbox runtime is active; while a sandbox runtime is active, `auto` rejects it. To run on a node from a sandboxed session, or to make node exec the session default, set `tools.exec.host=node` or `/exec host=node ...` explicitly.
 
 Related:
