@@ -45,18 +45,13 @@ export async function downloadArtifact(
   if (!state.connected || !client) {
     return null;
   }
-  // Same-origin previews require the bounded HTTP rendition route, including
-  // local HTTP development. Originals retain the established transport policy.
+  // Prefer same-origin HTTP without assuming a remote WebSocket exposes media
+  // routes. Preview intent also survives inline transport and HTTP fallback.
   const managedArtifact = /^artifact_managed_(?:image|media)_/u.test(params.artifactId);
   const useHttp =
     !managedArtifact &&
     (globalThis.location?.protocol === "https:" || variant === "thumbnail") &&
     isSameOriginGateway(client.gatewayUrl);
-  if (variant === "thumbnail" && !useHttp && !managedArtifact) {
-    // Inline artifact delivery is an original-byte contract, not a preview.
-    // Do not transfer those bytes merely to discover there is no rendition route.
-    return null;
-  }
   const isCurrent = () =>
     !signal?.aborted &&
     state.connected &&
@@ -68,7 +63,13 @@ export async function downloadArtifact(
     }
     const result = await client.request<ArtifactDownloadResult | null>(
       "artifacts.download",
-      { ...params, ...(http ? { transport: "http" } : {}) },
+      {
+        ...params,
+        ...(variant === "thumbnail" && !managedArtifact
+          ? { previewWidth: previewWidth ?? 960 }
+          : {}),
+        ...(http ? { transport: "http" } : {}),
+      },
       { timeoutMs: 30_000 },
     );
     return isCurrent() ? result : null;
@@ -118,13 +119,8 @@ export async function downloadArtifact(
     }
     return isCurrent() ? { ...download, blob } : null;
   } catch {
-    // A failed preview must not silently download the original over WebSocket.
-    // Explicit full-size actions retain the ordinary transport fallback below.
-    if (variant === "thumbnail") {
-      return null;
-    }
-    // Some proxies serve the UI and WebSocket but omit media routes. Reauthorize
-    // inline delivery on the same connection instead of probing or retargeting.
+    // Some proxies expose only WebSocket. Reauthorize on the same connection;
+    // previewWidth keeps this fallback bounded instead of requesting originals.
     return await request(false);
   }
 }
