@@ -348,12 +348,13 @@ describe("Feishu doctor state repair", () => {
     expect(fs.existsSync(session.storePath)).toBe(false);
     expect(fs.existsSync(sqlitePath)).toBe(true);
 
+    const walUpdatedAt = Date.now() - 1_000;
     const writer = new DatabaseSync(sqlitePath);
     try {
       writer.exec("PRAGMA wal_autocheckpoint = 0; PRAGMA wal_checkpoint(TRUNCATE);");
       writer
         .prepare("UPDATE session_nodes SET updated_at = ? WHERE session_key = ?")
-        .run(123, healthy.sessionKey);
+        .run(walUpdatedAt, healthy.sessionKey);
       expect(fs.statSync(`${sqlitePath}-wal`).size).toBeGreaterThan(0);
       expect(fs.existsSync(`${sqlitePath}-shm`)).toBe(true);
 
@@ -381,7 +382,7 @@ describe("Feishu doctor state repair", () => {
           snapshot
             .prepare("SELECT updated_at FROM session_nodes WHERE session_key = ?")
             .get(healthy.sessionKey),
-        ).toEqual({ updated_at: 123 });
+        ).toEqual({ updated_at: walUpdatedAt });
         expect(
           snapshot
             .prepare("SELECT current_session_id FROM session_nodes WHERE session_key = ?")

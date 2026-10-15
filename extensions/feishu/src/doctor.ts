@@ -11,7 +11,6 @@ import { isPathStrictlyInside } from "openclaw/plugin-sdk/file-access-runtime";
 import { normalizeAgentId } from "openclaw/plugin-sdk/routing";
 import {
   isValidAgentHarnessSessionStoreEntry,
-  createSessionStoreBackup,
   deleteSessionEntry,
   getSessionEntryAsync,
   listSessionEntriesAsync,
@@ -693,11 +692,9 @@ async function repairFeishuDoctorState(params: {
   )) {
     const agentId = entries[0]!.agentId;
     try {
-      await createSessionStoreBackup({
-        storePath,
-        agentId,
-        backupDir: resolveUniquePath(path.join(backupDir, "session-stores", agentId)),
-      });
+      let storeBackupDir: string | undefined = resolveUniquePath(
+        path.join(backupDir, "session-stores", agentId),
+      );
       const removedEntries: typeof entries = [];
       for (const entry of entries) {
         const { key } = entry;
@@ -708,9 +705,11 @@ async function repairFeishuDoctorState(params: {
         const deleted = await deleteSessionEntry({
           agentId,
           archiveTranscript: true,
+          backupDir: storeBackupDir,
           sessionKey: key,
           storePath,
         });
+        storeBackupDir = undefined;
         if (!deleted) {
           continue;
         }

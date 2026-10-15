@@ -145,6 +145,8 @@ type ReadAmbientTranscriptWatermarkParams = SessionStoreReadParams & {
 
 type DeleteSessionEntryParams = SessionStoreReadParams & {
   archiveTranscript?: boolean;
+  /** Doctor-only recovery snapshot in a fresh directory, completed before deletion. */
+  backupDir?: string;
   expectedSessionId?: string | null;
   expectedUpdatedAt?: number;
 };
@@ -523,6 +525,9 @@ export async function deleteSessionEntry(params: DeleteSessionEntryParams): Prom
       agentId,
       env: params.env,
     });
+  if (params.backupDir !== undefined) {
+    await createSessionStoreBackup({ agentId, storePath, backupDir: params.backupDir });
+  }
   const result = await deleteAccessorSessionEntryLifecycle({
     ...(agentId !== undefined ? { agentId } : {}),
     ...(params.env !== undefined ? { env: params.env } : {}),
@@ -544,7 +549,7 @@ export async function deleteSessionEntry(params: DeleteSessionEntryParams): Prom
 
 /**
  * Inventories session-store artifacts; this is not a safe live-file copy protocol.
- * Use createSessionStoreBackup before repair so SQLite owns snapshot consistency.
+ * Use deleteSessionEntry's backupDir option for a verified pre-repair snapshot.
  */
 export function resolveSessionStoreBackupPaths(params: {
   agentId?: string;
@@ -566,7 +571,7 @@ export function resolveSessionStoreBackupPaths(params: {
 }
 
 /** Create a verified, standalone SQLite backup and preserve any legacy session index. */
-export async function createSessionStoreBackup(params: {
+async function createSessionStoreBackup(params: {
   agentId?: string;
   storePath: string;
   backupDir: string;
