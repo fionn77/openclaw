@@ -827,7 +827,9 @@ describe("plugin-owned Dreaming settings entrypoint", () => {
         const limit = element.querySelector<HTMLInputElement>('input[aria-label="Limit"]');
         expect(limit?.value).toBe("0");
         expect(patchForm).not.toHaveBeenCalled();
-        if (!frequency) throw new Error("Missing Dreaming frequency");
+        if (!frequency) {
+          throw new Error("Missing Dreaming frequency");
+        }
         frequency.value = "0 4 * * *";
         frequency.dispatchEvent(new Event("change"));
         expect(patchForm).toHaveBeenLastCalledWith(
@@ -872,7 +874,9 @@ describe("plugin-owned Dreaming settings entrypoint", () => {
         const input = element.querySelector<HTMLInputElement>(
           'input[aria-label="Dreaming frequency"]',
         );
-        if (!input) throw new Error("Missing Dreaming frequency");
+        if (!input) {
+          throw new Error("Missing Dreaming frequency");
+        }
         if (change === "owner") {
           runtimeConfig.state.configForm = { plugins: { slots: { memory: "custom-memory" } } };
         } else if (change === "disconnect") {
@@ -887,7 +891,9 @@ describe("plugin-owned Dreaming settings entrypoint", () => {
         expect(patchForm).not.toHaveBeenCalled();
         expect(runtimeConfig.removeFormValue).not.toHaveBeenCalled();
       } finally {
-        if (element.isConnected) element.remove();
+        if (element.isConnected) {
+          element.remove();
+        }
       }
     },
   );

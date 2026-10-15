@@ -271,7 +271,9 @@ it("submits edited values and removals through the shared config owner without m
     const toggle = rowFor(view.container, "Verbose logging").querySelector<HTMLInputElement>(
       ".settings-toggle__input",
     );
-    if (!toggle) throw new Error("Missing verbose logging toggle");
+    if (!toggle) {
+      throw new Error("Missing verbose logging toggle");
+    }
     toggle.checked = false;
     toggle.dispatchEvent(new Event("change", { bubbles: true }));
     editNumber(numberInput(view.container, "Dreaming frequency"), "");
