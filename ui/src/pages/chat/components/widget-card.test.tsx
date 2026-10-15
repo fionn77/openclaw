@@ -7,7 +7,7 @@ import { bumpCanvasWidgetFrameConnectionGeneration } from "../../../lib/chat/can
 import { SolidContentPresentation } from "../../../lit/solid-content.tsx";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { flush } from "../../../test-helpers/solid-settle.ts";
-import { ToolPreview, renderToolPreview } from "./widget-card.ts";
+import { ToolPreview } from "./widget-card.ts";
 
 const canvasPreview = {
   kind: "canvas",
@@ -16,8 +16,8 @@ const canvasPreview = {
 } as const;
 const widgetPorts: MessagePort[] = [];
 type PreviewState = {
-  preview: Parameters<typeof renderToolPreview>[0];
-  options: Parameters<typeof renderToolPreview>[2];
+  preview: Parameters<typeof ToolPreview>[0]["preview"];
+  options: Parameters<typeof ToolPreview>[0]["options"];
 };
 const widgets = new Map<
   HTMLElement,
@@ -30,8 +30,8 @@ function unmountWidget(host: HTMLElement) {
 }
 
 function mountWidget(
-  preview: Parameters<typeof renderToolPreview>[0],
-  options?: Parameters<typeof renderToolPreview>[2],
+  preview: PreviewState["preview"],
+  options?: PreviewState["options"],
   host = document.createElement("div"),
 ) {
   const state = { preview, options };
