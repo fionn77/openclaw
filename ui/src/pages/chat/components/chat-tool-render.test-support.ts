@@ -1,20 +1,11 @@
-import { html, nothing, render } from "lit";
+import { render } from "lit";
 import { onTestFinished } from "vitest";
 import type { ToolCard } from "../../../lib/chat/chat-types.ts";
-import type { ToolCardOptions } from "./chat-tool-cards.solid.tsx";
-import "./chat-tool-cards.solid.tsx";
+import { solidContent } from "../../../lit/solid-content.tsx";
+import { ChatToolCard, type ToolCardOptions } from "./chat-tool-cards.solid.tsx";
 
-// Keep the Lit child subtree stable while the native Solid card parks it collapsed.
-export function renderToolCard(card: ToolCard, options: ToolCardOptions & { children?: unknown }) {
-  return html`<openclaw-chat-tool-card
-    style="display: contents"
-    .card=${card}
-    .options=${options}
-    .hasChildren=${Boolean(options.children)}
-    ><div style="display: contents">
-      ${options.expanded ? options.children : nothing}
-    </div></openclaw-chat-tool-card
-  >`;
+export function renderToolCard(card: ToolCard, options: ToolCardOptions) {
+  return solidContent(ChatToolCard, { card, options });
 }
 
 export async function settleToolBridges(container: HTMLElement) {
