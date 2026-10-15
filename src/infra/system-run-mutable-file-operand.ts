@@ -417,9 +417,17 @@ function resolveMutableFileOperandIndex(argv: string[], cwd: string | undefined)
   return genericIndex === null ? null : unwrapped.baseIndex + genericIndex;
 }
 
-function shellPayloadNeedsStableBinding(shellCommand: string, cwd: string | undefined): boolean {
+function shellPayloadNeedsStableBinding(
+  shellCommand: string,
+  cwd: string | undefined,
+  shellExecutable: string,
+): boolean {
   // Only reconsider payloads the raw separator check previously rejected.
   const needsLiteralCheck = /[;&|<>]/u.test(shellCommand);
+  // Node exec uses sh; other shell grammars retain their existing separator refusal.
+  if (needsLiteralCheck && shellExecutable !== "sh") {
+    return true;
+  }
   const globIndexes: number[] = [];
   let argv = splitShellArgs(shellCommand, {
     rejectShellSyntax: needsLiteralCheck,
@@ -442,7 +450,24 @@ function shellPayloadNeedsStableBinding(shellCommand: string, cwd: string | unde
       resolveKnownPackageManagerExecInvocation(plan.argv).kind !== "not-package-manager" ||
       globIndexes.some((index) => index <= executableIndex) ||
       isEnvAssignmentToken(firstToken) ||
-      ["eval", "!", "coproc"].includes(firstToken)
+      // Pathname expansion can synthesize builtin options such as -v.
+      (firstToken === "printf" &&
+        (plan.argv[1]?.startsWith("-v") || globIndexes.includes(executableIndex + 1))) ||
+      (["test", "["].includes(firstToken) &&
+        (plan.argv.includes("-v") || globIndexes.length > 0)) ||
+      [
+        "eval",
+        "trap",
+        "enable",
+        "let",
+        "declare",
+        "typeset",
+        "export",
+        "readonly",
+        "local",
+        "!",
+        "coproc",
+      ].includes(firstToken)
     ) {
       return true;
     }
@@ -485,7 +510,11 @@ function requiresStableInterpreterApprovalBindingWithShellCommand(params: {
     return true;
   }
   if (params.shellCommand !== null) {
-    return shellPayloadNeedsStableBinding(params.shellCommand, params.cwd);
+    return shellPayloadNeedsStableBinding(
+      params.shellCommand,
+      params.cwd,
+      normalizeExecutableToken(unwrapped.argv[0] ?? ""),
+    );
   }
   if (pnpmDlxInvocationNeedsFailClosedBinding(params.argv, params.cwd)) {
     return true;

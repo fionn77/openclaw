@@ -12,6 +12,18 @@ const DENIED_RUNTIME_APPROVAL = expect.objectContaining({
 });
 
 describe("literal shell arguments in node approval plans", () => {
+  it.each([
+    ["cmd.exe", "/d", "/c", "echo 'x&python mutable.py &echo '"],
+    ["pwsh", "-NoProfile", "-Command", "Write-Output 'x&y'"],
+    ["nu", "--commands", "echo 'x&y'"],
+    ["zsh", "-c", "noglob python ./mutable.py 'x&y'"],
+    ["bash", "-c", "echo 'x&y'"],
+  ])("retains separator rejection outside node sh grammar: %j", (...command) => {
+    expect(buildSystemRunApprovalPlan({ command, cwd: process.cwd() })).toEqual(
+      DENIED_RUNTIME_APPROVAL,
+    );
+  });
+
   it.skipIf(process.platform === "win32")(
     "preserves quoted and escaped literal arguments in native shell approval plans",
     ({ skip }) => {
@@ -20,14 +32,15 @@ describe("literal shell arguments in node approval plans", () => {
         skip();
       }
       const callback = "http://127.0.0.1:9876/oauth2/callback?state=synthetic&code=synthetic";
-      for (const argument of [
-        `'${callback}'`,
-        `"${callback}"`,
-        callback.replace("&", "\\&"),
-        "'literal;pipe|redirect<>$value`text`'",
-        '"literal;pipe|redirect<>"',
+      for (const [executable, argument] of [
+        [binaryPath, `'${callback}'`],
+        [binaryPath, `"${callback}"`],
+        [binaryPath, callback.replace("&", "\\&")],
+        [binaryPath, "'literal;pipe|redirect<>$value`text`'"],
+        [binaryPath, '"literal;pipe|redirect<>"'],
+        ["printf", `'${callback}'`],
       ]) {
-        const command = `${binaryPath} --auth-url ${argument}`;
+        const command = `${executable} --auth-url ${argument}`;
         const prepared = buildSystemRunApprovalPlan({
           command: ["/bin/sh", "-lc", command],
           rawCommand: command,
@@ -109,6 +122,14 @@ describe("literal shell arguments in node approval plans", () => {
       "command python ./mutable.py 'x&y'",
       "exec python ./mutable.py 'x&y'",
       "builtin eval \"python ./mutable.py 'x&y'\"",
+      "trap 'python ./mutable.py \"x&y\"' EXIT",
+      "enable -f ./mutable.so 'x&y'",
+      "printf -v 'a[$(python ./mutable.py \"x&y\")]' %s value",
+      "printf -[v] 'a[$(python ./mutable.py \"x&y\")]' %s value",
+      "test -v 'a[$(python ./mutable.py \"x&y\")]'",
+      "test -[v] 'a[$(python ./mutable.py \"x&y\")]'",
+      "let 'a[$(python ./mutable.py \"x&y\")]=1'",
+      "declare 'a[$(python ./mutable.py \"x&y\")]=1'",
       "busybox sh -c 'python ./mutable.py \"x&y\"'",
     ])("rejects shell syntax and carriers that obscure mutable interpreters: %j", (command) => {
     expect(
