@@ -83,7 +83,8 @@ describe("openclaw-modal-dialog", () => {
       await commitRender(modal);
 
       expect(modal.open).toBe(true);
-      expect(document.openClawModalLayers?.has(modal)).toBe(false);
+      // Removing before the first mount does not need to initialize the layer registry.
+      expect(document.openClawModalLayers?.has(modal) ?? false).toBe(false);
 
       container.append(modal);
       const { dialog } = await getRenderedModalDialog(container);

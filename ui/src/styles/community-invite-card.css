@@ -101,7 +101,7 @@
   overflow-wrap: anywhere;
 }
 
-.sidebar-community__link {
+a.sidebar-community__link {
   display: flex;
   align-items: center;
   gap: var(--space-3);
