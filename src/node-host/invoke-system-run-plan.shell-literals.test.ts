@@ -14,10 +14,10 @@ const DENIED_RUNTIME_APPROVAL = expect.objectContaining({
 describe("literal shell arguments in node approval plans", () => {
   it.skipIf(process.platform === "win32")(
     "preserves quoted and escaped literal arguments in native shell approval plans",
-    () => {
+    ({ skip }) => {
       const binaryPath = resolveNativeBinaryFixturePath();
       if (canMutateNativeBinaryFixturePath(binaryPath)) {
-        return;
+        skip();
       }
       const callback = "http://127.0.0.1:9876/oauth2/callback?state=synthetic&code=synthetic";
       for (const argument of [
@@ -50,6 +50,7 @@ describe("literal shell arguments in node approval plans", () => {
       for (const argument of [
         "safe&other",
         "safe;other",
+        "safe&&other",
         "safe|other",
         "safe>out",
         "safe<in",
@@ -64,6 +65,13 @@ describe("literal shell arguments in node approval plans", () => {
         '"$(other)&literal"',
         '"`other`&literal"',
         '"${VALUE}&literal"',
+        "$(other)",
+        String.raw`\";other`,
+        String.raw`"safe\";literal";other`,
+        '"a&b$(other)"',
+        '"$(/usr/bin/printf ""; /bin/sh /tmp/payload.sh)"',
+        "\"$(/usr/bin/printf 'a|b')\"",
+        "`/usr/bin/printf 'a'; /usr/bin/printf 'b'`",
         "'unterminated",
         "trailing\\",
       ]) {
@@ -77,6 +85,21 @@ describe("literal shell arguments in node approval plans", () => {
           command,
         ).toEqual(DENIED_RUNTIME_APPROVAL);
       }
+    },
+  );
+
+  it
+    .skipIf(process.platform === "win32")
+    .each(["py\\\nthon ./mutable.py 'x&y'", "\"py\\\nthon\" ./mutable.py 'x&y'"])(
+    "rejects continuation-obscured interpreter commands: %j",
+    (command) => {
+      expect(
+        buildSystemRunApprovalPlan({
+          command: ["/bin/sh", "-lc", command],
+          rawCommand: command,
+          cwd: process.cwd(),
+        }),
+      ).toEqual(DENIED_RUNTIME_APPROVAL);
     },
   );
 });

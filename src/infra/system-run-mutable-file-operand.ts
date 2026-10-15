@@ -415,8 +415,7 @@ function resolveMutableFileOperandIndex(argv: string[], cwd: string | undefined)
 }
 
 function shellPayloadNeedsStableBinding(shellCommand: string, cwd: string | undefined): boolean {
-  // Literal URL separators must not be mistaken for shell control operators.
-  // Reject dynamic syntax before treating the remaining words as direct argv.
+  // Classify literal argv without treating quoted URL separators as shell syntax.
   const argv = splitShellArgs(shellCommand, { rejectShellSyntax: true });
   if (!argv) {
     return true;

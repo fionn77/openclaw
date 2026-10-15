@@ -98,9 +98,12 @@ function splitQuotedArgs(
     const ch = raw.charAt(i);
     if (escaped) {
       buf += ch;
-      wordStarted = true;
       escaped = false;
       continue;
+    }
+    // Continuations can hide an interpreter name from approval operand binding.
+    if (rejectShellSyntax && quote !== "'" && ch === "\\" && /[\r\n]/u.test(raw[i + 1] ?? "")) {
+      return null;
     }
     if (backslashEscapes && !quote && ch === "\\") {
       escaped = true;
